@@ -1,0 +1,7 @@
+ml_dtypes
+pydantic
+uvicorn
+fastapi
+gradio<4
+-f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+jax[cuda12_pip]

@@ -1,4 +1,4 @@
-name: EasyLM
+name: Gemma-EasyLM
 channels:
     - conda-forge
 dependencies:

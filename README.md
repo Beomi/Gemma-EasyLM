@@ -1,77 +1,92 @@
-# EasyLM
-Large language models (LLMs) made easy, EasyLM is a one stop solution for
-pre-training, finetuning, evaluating and serving LLMs in JAX/Flax. EasyLM can
-scale up LLM training to hundreds of TPU/GPU accelerators by leveraging
-JAX's pjit functionality.
+# Gemma-EasyLM
 
+This document outlines the integration of the Gemma model into the EasyLM framework, including instructions for training, converting the model format, and serving the model with Gradio.
 
-Building on top of Hugginface's [transformers](https://huggingface.co/docs/transformers/main/en/index)
-and [datasets](https://huggingface.co/docs/datasets/index), this repo provides
-an easy to use and easy to customize codebase for training large language models
-without the complexity in many other frameworks.
+## Training: Integrating HF Flax Weights into EasyLM
 
+### Step 1: Consolidate Flax Weights from Hugging Face
 
-EasyLM is built with JAX/Flax. By leveraging JAX's pjit utility, EasyLM is able
-to train large models that don't fit on a single accelerator by sharding
-the model weights and training data across multiple accelerators. Currently,
-EasyLM supports multiple TPU/GPU training in a single host as well as multi-host
-training on Google Cloud TPU Pods.
+Firstly, concatenate all Flax model weights available at: [Hugging Face - Gemma 7B](https://huggingface.co/google/gemma-7b/tree/flax).
 
-Currently, the following models are supported:
-* [LLaMA](https://arxiv.org/abs/2302.13971)
-* [GPT-J](https://huggingface.co/EleutherAI/gpt-j-6B)
-* [RoBERTa](https://huggingface.co/docs/transformers/model_doc/roberta)
+Use the following example code to accomplish this:
 
-## Discord Server
-We are running an unofficial Discord community (unaffiliated with Google) for discussion related to training LLMs in JAX. [Follow this link to join the Discord server](https://discord.gg/Rf4drG3Bhp). We have dedicated channels for several JAX based LLM frameworks, include EasyLM, [JaxSeq](https://github.com/Sea-Snell/JAXSeq), [Alpa](https://github.com/alpa-projects/alpa) and [Levanter](https://github.com/stanford-crfm/levanter).
+```python
+from transformers import GemmaForCausalLM
 
-
-## Models Trained with EasyLM
-### OpenLLaMA
-OpenLLaMA is our permissively licensed reproduction of LLaMA which can be used
-for commercial purposes. Check out the [project main page here](https://github.com/openlm-research/open_llama).
-The OpenLLaMA can serve as drop in replacement for the LLaMA weights in EasyLM.
-Please refer to the [LLaMA documentation](docs/llama.md) for more details.
-
-
-### Koala
-Koala is our new chatbot fine-tuned on top of LLaMA. If you are interested in
-our Koala chatbot, you can check out the [blogpost](https://bair.berkeley.edu/blog/2023/04/03/koala/)
-and [documentation for running it locally](docs/koala.md).
-
-
-## Installation
-The installation method differs between GPU hosts and Cloud TPU hosts. The first
-step is to pull from GitHub.
-
-``` shell
-git clone https://github.com/young-geng/EasyLM.git
-cd EasyLM
-export PYTHONPATH="${PWD}:$PYTHONPATH"
+model = GemmaForCausalLM.from_pretrained("google/gemma-7b", torch_dtype="auto")
+model.save_pretrained("./flax-concatted", max_shard_size="99GB")
 ```
 
-#### Installing on GPU Host
-The GPU environment can be installed via [Anaconda](https://www.anaconda.com/products/distribution).
+This script generates a `flax-concatted/flax_model.msgpack` file. We will utilize this `.msgpack` file during the training process.
 
-``` shell
-conda env create -f scripts/gpu_environment.yml
-conda activate EasyLM
+### Step 2: Upload the .msgpack File to Google Cloud Storage (GCS)
+
+Execute the following command to upload the generated `.msgpack` file to your GCS repository:
+
+```bash
+gsutil cp ./flax-concatted/flax_model.msgpack gs://YOUR_GCS_REPO_NAME
 ```
 
-#### Installing on Cloud TPU Host
-The TPU host VM comes with Python and PIP pre-installed. Simply run the following
-script to set up the TPU host.
+### Step 3: Modify the `train.sh` Script
 
-``` shell
-./scripts/tpu_vm_setup.sh
+Adjust the paths for `load_checkpoint`, `train_dataset.json_dataset.path`, and `logger.output_dir` within the `train.sh` script to match your setup.
+
+The provided example `train.sh` script assumes training will be conducted on a TPUv4-64 pod slice.
+
+### Step 4: Initiate Training
+
+Execute the training script to start the training process:
+
+```
+./train.sh
 ```
 
+## Conversion: From EasyLM to Hugging Face Format
 
-## [Documentations](docs/README.md)
-The EasyLM documentations can be found in the [docs](docs/) directory.
+### Step 1: Retrieve the `streaming_train_state` File
 
+Download the `streaming_train_state` file from your GCS repository using the following command:
 
-## Reference
+```
+gsutil cp gs://YOUR_GCS_REPO_NAME/.../streaming_train_state_80000 .
+```
+
+Note: The file name will either be `streaming_train_state` or `streaming_train_state_STEPNO`.
+
+### Step 2: Update the `.stream` File Path
+
+In the `convert_easylm_stream_to_hf_safetensors.py` file, modify the path to the `.stream` file accordingly:
+
+```python
+# Modify this line
+_, param = StreamingCheckpointer.load_trainstate_checkpoint(load_from='trainstate_params::/home/latheledusjp/streaming_train_state_80000')
+```
+
+### Step 3: Execute the Conversion Script
+
+Run the conversion script to convert the EasyLM model format to Hugging Face's format:
+
+```
+python convert_easylm_stream_to_hf_safetensors.py
+```
+
+### Step 4: Verify the Output Files
+
+Check the generated output files in the `./gemma-ko-8.5b-dev` directory.
+
+> The Flax-version of the weight file can be found in the `./flax-gemma-ko-8b` folder.
+
+## Serving the Model with Gradio
+
+To serve the model using Gradio, follow these steps:
+
+```
+cd EasyLM/models/gemma
+pip install -r serving_requirements.txt
+./serve_test.sh
+```
+
+## Original EasyLM Reference
 If you found EasyLM useful in your research or applications, please cite using the following BibTeX:
 ```
 @software{geng2023easylm,
@@ -82,8 +97,6 @@ If you found EasyLM useful in your research or applications, please cite using t
   url = {https://github.com/young-geng/EasyLM}
 }
 ```
-
-
 
 ## Credits
 * The LLaMA implementation is from [JAX_llama](https://github.com/Sea-Snell/JAX_llama)
