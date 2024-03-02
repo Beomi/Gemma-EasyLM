@@ -6,6 +6,8 @@ This document outlines the integration of the Gemma model into the EasyLM framew
 
 ### Step 1: Consolidate Flax Weights from Hugging Face
 
+> You can skip this step with downloading https://huggingface.co/beomi/gemma-ko-7b/resolve/flax-init/flax_model.msgpack
+
 Firstly, concatenate all Flax model weights available at: [Hugging Face - Gemma 7B](https://huggingface.co/google/gemma-7b/tree/flax).
 
 Use the following example code to accomplish this:
